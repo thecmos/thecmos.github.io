@@ -1,0 +1,87 @@
+---
+title: "Prediction models"
+author: "TheCmos"
+date: "March 11, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+
+This report shows the construction of a model to predict the type of execution from total possible of five of a simple dumbbell lifting exercise based on the data collected by wearable devices. All the data are presented by the authors of the study "Qualitative Activity Recognition of Weight Lifting Exercises", cited at the bottom of this document.  
+The first step was the selection of a few relevant predictors, for which a simple CART model was built. As expected this model did not provide acceptable accuracy, but it was a very efficient tool to select predictors of interest.  
+In a second step these predictors were used to build a more sophisticated **Random Forest model** with low risk of ovefitting.
+Cross validation was conducted by subdividing the original training dataset into training and validation. 
+This second model was then used to **predict the testing dataset with 100% accurate results based on the prediction quizz** provided by the instructor of the course.
+  
+##Selection of predictors to prevent risk of overfitting
+
+Build a simple CART model to select predictors.
+Start with the preparation of the data. Libraries needed but not shown on this summary for brevity include dplyr, caret, rattle.
+```{r libraries,include=FALSE,echo=FALSE}
+library(dplyr)
+library(caret)
+library(rattle)
+```
+```{r data prep}
+as_training<-read.csv("pml-training.csv")
+as_testing<-read.csv("pml-testing.csv")
+```
+Define two fuctions to easily remove mostly NA variables and factors. If the need to improve model accuracy required it these factors would be added back. Add the response variable back. Also Remove the first few variables that contain non relevant information.
+```{r remove}
+not_any_na <- function(x) all(!is.na(x))
+as_tr<-select_if(as_training,not_any_na)
+not_factor<-function(x) !is.factor(x)
+as_tr_c<-select_if(as_tr,not_factor)
+as_tr_c$classe<-as_training$classe
+as_tr_c_r<-as_tr_c[,-(1:4)]
+```
+Data partition for cross validation.
+```{r partition}
+trainIn = createDataPartition(as_tr_c_r$classe, p = 2/3,list=FALSE)
+tr_in = as_tr_c_r[trainIn,]
+test_in = as_tr_c_r[-trainIn,]
+```
+
+And now built the simple CART model just for the **purpose of selecting relevant predictors taht will be used in the final model**.  
+```{r select predictors,cache=TRUE}
+modTree <- train(classe ~ .,method="rpart",data=tr_in)
+fancyRpartPlot(modTree$finalModel)
+```
+
+The variables shown on the graph above and their associated predictors (for example, same measurement for the other axes) will be used to build the final model, including the outcome variable. THe new data reduced dataset is:
+```{r final predictors}
+tr_in_red<-tr_in[,c(1,2,3,19,20,21,22,23,24,40,41,42,37,38,39,53)]
+##Names of the variables
+names(tr_in_red)
+```
+
+As a side note, the accuracy of this model for the prediction of the testing partition above, named test_in, is 0.4886, poor, but the purpose of the exercise is to reduce the number of variables, for which this tree is very helpful, as shown by the results of this study.
+
+## Final model
+
+As explained, a Random Forest model is built for the prediction, using for cross validation the data partition above that resulted in the datasets tr_in and test_in, that now will be further simplified by selecting  only the corresponding columns of the predictors obtained through the CART model.
+
+```{r final model,cache=TRUE}
+## RF model
+mod2 <- train(classe ~.,method="rf",data=tr_in_red)
+##Cross validation with partition
+pred2<-predict(mod2,test_in)
+confusionMatrix(pred2,test_in$classe)
+```
+
+The final step is to run the prediction on the original testing data set, that was named "as_testing" at the top of the document.
+```{r prediction}
+pred3<-predict(mod2,as_testing)
+pred3
+```
+The students of this course can easily confirm that the predicitons above provide a 100% success rate on the Prediction Quiz provided by the instructor.
+
+Dataset obtained from: 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz5hsrpCLUA
+
